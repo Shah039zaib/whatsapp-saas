@@ -1,1 +1,7 @@
 
+body{font-family:Inter,Arial,Helvetica,sans-serif;margin:0;padding:16px;background:#f5f7fb;color:#0b1220}
+.nav{padding:12px;background:#fff;border-radius:8px;margin-bottom:12px}
+a{color:#0b66ff;text-decoration:none;margin-right:8px}
+.card{background:#fff;padding:12px;border-radius:8px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,0.06)}
+button{background:#0b66ff;color:#fff;padding:8px 10px;border:none;border-radius:6px;cursor:pointer}
+input,select,textarea{padding:8px;border:1px solid #e3e8ef;border-radius:6px;width:100%}
