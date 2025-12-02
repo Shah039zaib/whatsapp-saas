@@ -1,0 +1,11 @@
+
+node_modules/
+dist/
+.env
+*.local
+bot/sessions/
+server/dist/
+admin/dist/
+uploads/
+server_uploads/
+*.zip
