@@ -5,6 +5,8 @@
     "rootDir": "src",
     "outDir": "dist",
     "esModuleInterop": true,
-    "strict": false
-  }
+    "strict": false,
+    "sourceMap": true
+  },
+  "include": ["src/**/*"]
 }
