@@ -1,28 +1,42 @@
-
+// server/src/routes/session.ts
 import express from "express";
-import { getLatestSessionFromDb, saveSessionToDb } from "../services/sessionStore";
-
+import { pool } from "../services/db";
 const router = express.Router();
 
-// GET latest session (for bot to fetch when starting on Render)
-router.get("/", async (req, res) => {
-  if (process.env.ALLOW_REMOTE_SESSION !== "true") {
-    return res.status(403).json({ ok: false, error: "Remote session disabled" });
+const SESSION_API_KEY = process.env.SESSION_API_KEY || "";
+
+router.post("/", async (req, res) => {
+  try {
+    const headerKey = (req.headers["x-session-key"] || "").toString();
+    if (SESSION_API_KEY && headerKey !== SESSION_API_KEY) {
+      return res.status(401).json({ ok: false, error: "unauthorized" });
+    }
+    const { name = "default", sessionJson } = req.body;
+    if (!sessionJson) return res.status(400).json({ ok: false, error: "sessionJson required" });
+    await pool.query(`CREATE TABLE IF NOT EXISTS bot_sessions (name text PRIMARY KEY, session_json text, updated_at timestamptz DEFAULT now())`);
+    const r = await pool.query(
+      `INSERT INTO bot_sessions (name, session_json, updated_at) VALUES ($1,$2,now())
+       ON CONFLICT (name) DO UPDATE SET session_json = EXCLUDED.session_json, updated_at=now()
+       RETURNING *;`,
+      [name, sessionJson]
+    );
+    res.json({ ok: true, row: r.rows[0] });
+  } catch (e: any) {
+    console.error("Save session error:", e);
+    res.status(500).json({ ok: false, error: String(e.message || e) });
   }
-  const s = await getLatestSessionFromDb();
-  if (!s) return res.json({ ok: true, session: null });
-  res.json({ ok: true, session: s });
 });
 
-// POST save session (bot can call to persist)
-router.post("/", async (req, res) => {
-  if (process.env.ALLOW_REMOTE_SESSION !== "true") {
-    return res.status(403).json({ ok: false, error: "Remote session disabled" });
+router.get("/:name", async (req, res) => {
+  try {
+    const name = req.params.name || "default";
+    const r = await pool.query("SELECT session_json FROM bot_sessions WHERE name=$1 LIMIT 1", [name]);
+    if (r.rowCount === 0) return res.json({ ok: true, sessionJson: null });
+    res.json({ ok: true, sessionJson: r.rows[0].session_json });
+  } catch (e: any) {
+    console.error("Get session error:", e);
+    res.status(500).json({ ok: false, error: String(e.message || e) });
   }
-  const sessionObj = req.body.session;
-  if (!sessionObj) return res.status(400).json({ ok: false, error: "No session provided" });
-  await saveSessionToDb(sessionObj);
-  res.json({ ok: true });
 });
 
 export default router;
