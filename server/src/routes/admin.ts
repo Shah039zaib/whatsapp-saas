@@ -1,39 +1,30 @@
+// server/src/routes/admin.ts
 import express from "express";
-import { requireAdmin } from "../middleware/adminAuth";
-const router = express.Router();
-
-router.post("/confirm-payment", requireAdmin, async (req, res) => {
-  // confirm payment logic
-});
-
-export default router;
-
-
-import express from "express";
+import { requireJwt } from "../middleware/verifyJwt";
 import { pool } from "../services/db";
 
 const router = express.Router();
 
-// simple admin stats
-router.get("/stats", async (req, res) => {
+// example protected endpoint: get all leads
+router.get("/leads", requireJwt, async (req, res) => {
   try {
-    const r1 = await pool.query("SELECT COUNT(*) FROM clients");
-    const r2 = await pool.query("SELECT COUNT(*) FROM payment_candidates WHERE status='pending'");
-    res.json({ ok: true, stats: { leads: Number(r1.rows[0].count || 0), pendingPayments: Number(r2.rows[0].count || 0) } });
-  } catch (e) {
-    console.error("Stats error:", e);
-    res.status(500).json({ ok: false, error: String(e) });
+    const r = await pool.query("SELECT * FROM leads ORDER BY created_at DESC LIMIT 200");
+    res.json({ ok: true, leads: r.rows });
+  } catch (e: any) {
+    console.error("admin leads error:", e);
+    res.status(500).json({ ok: false, error: String(e.message || e) });
   }
 });
 
-// clear demo links
-router.post("/demo/clear", async (req, res) => {
+// example to confirm payment
+router.post("/confirm-payment", requireJwt, async (req, res) => {
   try {
-    await pool.query("TRUNCATE demo_links RESTART IDENTITY CASCADE");
-    res.json({ ok:true });
-  } catch (e) {
-    console.error("Clear demo links error:", e);
-    res.status(500).json({ ok:false, error: String(e) });
+    const { id } = req.body;
+    await pool.query("UPDATE payment_candidates SET status='confirmed' WHERE id=$1", [id]);
+    res.json({ ok: true });
+  } catch (e: any) {
+    console.error("confirm payment error:", e);
+    res.status(500).json({ ok: false, error: String(e.message || e) });
   }
 });
 
