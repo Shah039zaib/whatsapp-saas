@@ -1,20 +1,24 @@
 {
   "name": "swa-bot",
   "version": "1.0.0",
+  "private": true,
   "scripts": {
-    "start": "ts-node src/index.ts",
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts"
   },
   "dependencies": {
     "@adiwajshing/baileys": "^5.0.0",
     "pino": "^8.13.0",
     "axios": "^1.4.0",
     "dotenv": "^16.3.1",
-    "tesseract.js": "^4.0.2"
+    "tesseract.js": "^4.0.2",
+    "form-data": "^4.0.0"
   },
   "devDependencies": {
-    "ts-node": "^10.9.1",
     "typescript": "^5.4.2",
+    "ts-node": "^10.9.1",
+    "ts-node-dev": "^2.0.0",
     "@types/node": "^20.3.1"
   }
 }
