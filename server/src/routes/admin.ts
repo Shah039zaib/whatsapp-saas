@@ -1,3 +1,13 @@
+import express from "express";
+import { requireAdmin } from "../middleware/adminAuth";
+const router = express.Router();
+
+router.post("/confirm-payment", requireAdmin, async (req, res) => {
+  // confirm payment logic
+});
+
+export default router;
+
 
 import express from "express";
 import { pool } from "../services/db";
