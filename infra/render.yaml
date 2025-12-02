@@ -1,1 +1,6 @@
 
+# Render deployment notes:
+# - Create Web Service for server/ (Node)
+# - Create Static Site for admin/ (Vite build -> admin/dist)
+# - Set env vars: DATABASE_URL, ENCRYPTION_KEY, APP_BASE_URL, ADMIN_SECRET
+# - Recommended: ALLOW_REMOTE_SESSION=false and run bot locally
