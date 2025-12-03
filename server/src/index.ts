@@ -1,3 +1,4 @@
+
 // server/src/index.ts
 import express from "express";
 import dotenv from "dotenv";
@@ -18,12 +19,10 @@ dotenv.config();
 const app = express();
 app.set("trust proxy", 1);
 
-// middlewares
 app.use(cookieParser());
 app.use(bodyParser.json({ limit: "2mb" }));
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// CORS - allow only admin frontend and allow credentials
 const ADMIN_ORIGIN = process.env.ADMIN_FRONTEND_ORIGIN || "https://shopify-wa-automation-updated-unkp.onrender.com";
 app.use(cors({
   origin: ADMIN_ORIGIN,
@@ -37,17 +36,24 @@ const uploadsPath = path.join(__dirname, "..", "server_uploads");
 if (!fs.existsSync(uploadsPath)) fs.mkdirSync(uploadsPath, { recursive: true });
 app.use("/server_uploads", express.static(uploadsPath));
 
-// mount routes
+// mount routers
 app.use("/api/leads", leadsRouter);
 app.use("/api/session", sessionRouter);
 app.use("/api/payment", paymentRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/demo", demoRouter);
 
-// root
+// Health endpoint for external pinger & Render health checks
+app.get("/health", (_req, res) => {
+  // You can expand checks here (DB, queue) if needed
+  res.json({ ok: true, ts: Date.now() });
+});
+
+// Root
 app.get("/", (_req, res) => res.json({ ok: true, message: "Server running." }));
 
 const PORT = Number(process.env.PORT || 10000);
+
 async function start() {
   try {
     console.log("Initializing database...");
@@ -61,4 +67,5 @@ async function start() {
     process.exit(1);
   }
 }
+
 start();
