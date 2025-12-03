@@ -45,7 +45,7 @@ async function startBot() {
   // 1) Try to fetch session from server and write files (if allowed)
   await fetchAndRestoreRemoteSession();
 
-  // 2) Now call useMultiFileAuthState as usual (it will read SESSION_DIR files if present)
+  // 2) Now call useMultiFileAuthState (Baileys reads SESSION_DIR if present)
   const { useMultiFileAuthState } = await import("@adiwajshing/baileys");
   const { state, saveCreds } = await (useMultiFileAuthState as any)(SESSION_DIR);
 
@@ -54,7 +54,7 @@ async function startBot() {
     logger: log as any,
   } as any);
 
-  // When creds update, save to disk AND POST them to server for persistence
+  // When creds update, save to disk AND POST to server for persistence
   sock.ev.on("creds.update", async () => {
     try {
       await saveCreds();
