@@ -2,7 +2,6 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
-
 const API = import.meta.env.VITE_API_BASE || "";
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
@@ -14,15 +13,11 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     let mounted = true;
     (async () => {
       try {
-        // try a lightweight protected endpoint that returns 200 if session ok
-        await axios.get(`${API}/api/admin/me`, { withCredentials: true, timeout: 5000 });
-        if (mounted) {
-          setOk(true);
-        }
-      } catch (e) {
-        if (mounted) {
-          setOk(false);
-        }
+        const res = await axios.get(`${API}/api/admin/me`, { withCredentials: true, timeout: 5000 });
+        if (mounted && res.data?.ok) setOk(true);
+        else if (mounted) setOk(false);
+      } catch {
+        if (mounted) setOk(false);
       } finally {
         if (mounted) setChecking(false);
       }
@@ -31,12 +26,9 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   }, []);
 
   if (checking) return <div>Checking session...</div>;
-
   if (!ok) {
-    // Use client-side navigation (no full page reload)
-    navigate("/login", { replace: true });
+    navigate("/login", { replace: true }); // client-side nav, no full reload
     return null;
   }
-
   return <>{children}</>;
 }
