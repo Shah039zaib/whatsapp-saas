@@ -2,7 +2,6 @@ import express from "express";
 import dotenv from "dotenv";
 import bodyParser from "body-parser";
 import cors from "cors";
-import cookieParser from "cookie-parser";
 import path from "path";
 import fs from "fs";
 import { initDb } from "./services/db";
@@ -11,48 +10,56 @@ import sessionRouter from "./routes/session";
 import paymentRouter from "./routes/payment";
 import adminRouter from "./routes/admin";
 import demoRouter from "./routes/demo";
-import debugRouter from "./routes/debug";
 
 dotenv.config();
 
 const app = express();
-app.set("trust proxy", 1);
-app.use(cookieParser());
-app.use(bodyParser.json({ limit: "2mb" }));
-app.use(bodyParser.urlencoded({ extended: true }));
-
-const ADMIN_ORIGIN = process.env.ADMIN_FRONTEND_ORIGIN || "*";
+app.use(bodyParser.json());
 app.use(cors({
-  origin: ADMIN_ORIGIN,
-  credentials: true,
-  methods: ["GET","POST","PUT","DELETE","OPTIONS"],
-  allowedHeaders: ["Content-Type","Authorization","Accept","X-Requested-With"]
+  origin: process.env.APP_BASE_URL || "*",
+  credentials: true
 }));
 
+// ensure uploads dir
 const uploadsPath = path.join(__dirname, "..", "server_uploads");
-if (!fs.existsSync(uploadsPath)) fs.mkdirSync(uploadsPath, { recursive: true });
+if (!fs.existsSync(uploadsPath)) {
+  fs.mkdirSync(uploadsPath, { recursive: true });
+}
 app.use("/server_uploads", express.static(uploadsPath));
 
+// simple health for Render & uptime checks
+app.get("/health", (_req, res) => {
+  res.json({ ok: true, uptime: process.uptime() });
+});
+
+// API ROUTES
 app.use("/api/leads", leadsRouter);
 app.use("/api/session", sessionRouter);
 app.use("/api/payment", paymentRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/demo", demoRouter);
-app.use("/api/debug", debugRouter);
 
-app.get("/health", (_req, res) => res.json({ ok: true, ts: Date.now() }));
-app.get("/", (_req, res) => res.json({ ok: true, message: "Server running." }));
+// root
+app.get("/", (_req, res) => {
+  res.json({ ok: true, message: "Server running." });
+});
 
 const PORT = Number(process.env.PORT || 10000);
+
 async function start() {
   try {
     console.log("Initializing database...");
     await initDb();
     console.log("Database initialized.");
-    app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
+
+    // listen on 0.0.0.0 for Render port binding
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server listening on port ${PORT}`);
+    });
   } catch (e: any) {
     console.error("Startup Error:", e);
     process.exit(1);
   }
 }
+
 start();
