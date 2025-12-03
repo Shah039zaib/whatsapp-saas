@@ -1,43 +1,46 @@
-import React, { useState } from "react";
-import axios from "axios";
+// admin/src/App.tsx
+import React from "react";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import Dashboard from "./pages/Dashboard";
+import Leads from "./pages/Leads";
+import LeadDetail from "./pages/LeadDetail";
+import PaymentMethods from "./pages/PaymentMethods";
+import PaymentCandidates from "./pages/PaymentCandidates";
+import WhatsAppControl from "./pages/WhatsAppControl";
+import AISettings from "./pages/AISettings";
+import Login from "./pages/Login";
+import AuthGuard from "./AuthGuard";
 
-const API = import.meta.env.VITE_API_BASE || "";
-
-export default function Login() {
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState("");
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    setErr("");
-    try {
-      const res = await axios.post(`${API}/api/auth/login`, { password }, { withCredentials: true });
-      if (res.data?.ok) {
-        // successful - reload or redirect to dashboard
-        window.location.href = "/";
-      } else {
-        setErr(res.data?.error || "Login failed");
-      }
-    } catch (e: any) {
-      setErr(e.response?.data?.error || e.message || "Network error");
-    } finally {
-      setLoading(false);
-    }
-  }
-
+export default function App(){
   return (
-    <div style={{ maxWidth: 420, margin: "60px auto", padding: 24, boxShadow: "0 2px 8px rgba(0,0,0,.08)" }}>
-      <h2>Admin Login</h2>
-      <form onSubmit={submit}>
-        <div>
-          <label>Password</label>
-          <input type="password" value={password} onChange={(e)=>setPassword(e.target.value)} style={{width:"100%",padding:8}} />
-        </div>
-        {err && <div style={{color:"red",marginTop:8}}>{err}</div>}
-        <button type="submit" style={{marginTop:12}} disabled={loading}>{loading? "Please wait..." : "Login"}</button>
-      </form>
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/*" element={
+          <AuthGuard>
+            <MainApp />
+          </AuthGuard>
+        } />
+      </Routes>
+    </BrowserRouter>
+  );
+}
+
+function MainApp(){
+  return (
+    <>
+      <div className="nav">
+        <a href="/">Dashboard</a> | <a href="/leads">Leads</a> | <a href="/payments">Payments</a> | <a href="/candidates">Candidates</a> | <a href="/wa">WhatsApp</a> | <a href="/ai">AI</a>
+      </div>
+      <Routes>
+        <Route path="/" element={<Dashboard/>}/>
+        <Route path="/leads" element={<Leads/>}/>
+        <Route path="/leads/:id" element={<LeadDetail/>}/>
+        <Route path="/payments" element={<PaymentMethods/>}/>
+        <Route path="/candidates" element={<PaymentCandidates/>}/>
+        <Route path="/wa" element={<WhatsAppControl/>}/>
+        <Route path="/ai" element={<AISettings/>}/>
+      </Routes>
+    </>
   );
 }
