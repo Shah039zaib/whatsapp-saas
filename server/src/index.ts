@@ -1,4 +1,4 @@
-// server/src/index.ts
+// server/src/index.ts  (DEBUG - replace temporarily)
 import express from "express";
 import dotenv from "dotenv";
 import bodyParser from "body-parser";
@@ -7,56 +7,52 @@ import cookieParser from "cookie-parser";
 import path from "path";
 import fs from "fs";
 import { initDb } from "./services/db";
-import leadsRouter from "./routes/leads";
-import sessionRouter from "./routes/session";
-import paymentRouter from "./routes/payment";
 import adminRouter from "./routes/admin";
-import demoRouter from "./routes/demo";
+// ... import other routers as needed
 
 dotenv.config();
 
 const app = express();
-
-// trust proxy for secure cookies behind Render
 app.set("trust proxy", 1);
-
-// body parsers
-app.use(express.json({ limit: "2mb" }));
-app.use(bodyParser.urlencoded({ extended: true, limit: "2mb" }));
 app.use(cookieParser());
+app.use(bodyParser.json({ limit: "2mb" }));
+app.use(bodyParser.urlencoded({ extended: true }));
 
-// CORS - allow admin origin and credentials
-const ADMIN_ORIGIN = process.env.ADMIN_FRONTEND_ORIGIN || process.env.APP_BASE_URL || true;
-app.use(
-  cors({
-    origin: ADMIN_ORIGIN,
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  })
-);
+// ===== DEBUG CORS & logging (temporary) =====
+// Allow everything for debug so we can confirm network
+app.use(cors({
+  origin: true,          // echo origin (safer than "*") while debugging
+  credentials: true,
+  methods: ["GET","POST","PUT","DELETE","OPTIONS"],
+  allowedHeaders: ["Content-Type","Authorization","Accept","X-Requested-With"]
+}));
 
-// ensure server_uploads exists
+// log every request to see what's coming
+app.use((req, res, next) => {
+  console.log(`[REQ] ${new Date().toISOString()} ${req.method} ${req.originalUrl} origin=${req.headers.origin || "none"}`);
+  next();
+});
+
+// respond to preflight fast
+app.options("*", (req, res) => {
+  res.sendStatus(204);
+});
+// =============================================
+
 const uploadsPath = path.join(__dirname, "..", "server_uploads");
 if (!fs.existsSync(uploadsPath)) fs.mkdirSync(uploadsPath, { recursive: true });
 app.use("/server_uploads", express.static(uploadsPath));
 
-// routes
-app.use("/api/leads", leadsRouter);
-app.use("/api/session", sessionRouter);
-app.use("/api/payment", paymentRouter);
+// mount routers
 app.use("/api/admin", adminRouter);
-app.use("/api/demo", demoRouter);
+// mount other routers: leads, session, payment, demo, etc.
 
-// health
 app.get("/", (_req, res) => res.json({ ok: true, message: "Server running." }));
 
 const PORT = Number(process.env.PORT || 3000);
-
 async function start() {
   try {
-    console.log("Initializing database...");
     await initDb();
-    console.log("Database initialized.");
     app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
   } catch (e: any) {
     console.error("Startup Error:", e);
