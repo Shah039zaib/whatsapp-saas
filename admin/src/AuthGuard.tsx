@@ -27,7 +27,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
 
   if (checking) return <div>Checking session...</div>;
   if (!ok) {
-    navigate("/login", { replace: true }); // client-side nav, no full reload
+    navigate("/login", { replace: true });
     return null;
   }
   return <>{children}</>;
