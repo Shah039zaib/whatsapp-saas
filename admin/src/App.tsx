@@ -1,5 +1,14 @@
 import React from "react";
-import { createRoot } from "react-dom/client";
-import App from "./App";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import Dashboard from "./pages/Dashboard";
+import Login from "./pages/Login";
+import AuthGuard from "./AuthGuard";
 
-createRoot(document.getElementById("root")!).render(<App />);
+export default function App(){
+  return <BrowserRouter>
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="/*" element={<AuthGuard><Dashboard /></AuthGuard>} />
+    </Routes>
+  </BrowserRouter>;
+}
