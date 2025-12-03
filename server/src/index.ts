@@ -5,11 +5,14 @@ import cors from "cors";
 import path from "path";
 import fs from "fs";
 import { initDb } from "./services/db";
+
 import leadsRouter from "./routes/leads";
-import sessionRouter from "./routes/session";
 import paymentRouter from "./routes/payment";
 import adminRouter from "./routes/admin";
 import demoRouter from "./routes/demo";
+
+// NEW — session API
+import sessionApi from "./routes/sessionApi";
 
 dotenv.config();
 
@@ -27,14 +30,17 @@ if (!fs.existsSync(uploadsPath)) {
 }
 app.use("/server_uploads", express.static(uploadsPath));
 
-// simple health for Render & uptime checks
+// health
 app.get("/health", (_req, res) => {
   res.json({ ok: true, uptime: process.uptime() });
 });
 
 // API ROUTES
 app.use("/api/leads", leadsRouter);
-app.use("/api/session", sessionRouter);
+
+// NEW session API (secure)
+app.use("/api/session", sessionApi);
+
 app.use("/api/payment", paymentRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/demo", demoRouter);
@@ -52,7 +58,6 @@ async function start() {
     await initDb();
     console.log("Database initialized.");
 
-    // listen on 0.0.0.0 for Render port binding
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`Server listening on port ${PORT}`);
     });
