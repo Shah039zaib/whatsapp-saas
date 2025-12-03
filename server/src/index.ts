@@ -1,4 +1,3 @@
-// server/src/index.ts
 import express from "express";
 import dotenv from "dotenv";
 import bodyParser from "body-parser";
@@ -12,17 +11,17 @@ import sessionRouter from "./routes/session";
 import paymentRouter from "./routes/payment";
 import adminRouter from "./routes/admin";
 import demoRouter from "./routes/demo";
+import debugRouter from "./routes/debug";
 
 dotenv.config();
 
 const app = express();
 app.set("trust proxy", 1);
-
 app.use(cookieParser());
 app.use(bodyParser.json({ limit: "2mb" }));
 app.use(bodyParser.urlencoded({ extended: true }));
 
-const ADMIN_ORIGIN = process.env.ADMIN_FRONTEND_ORIGIN || "https://shopify-wa-automation-updated-unkp.onrender.com";
+const ADMIN_ORIGIN = process.env.ADMIN_FRONTEND_ORIGIN || "*";
 app.use(cors({
   origin: ADMIN_ORIGIN,
   credentials: true,
@@ -30,21 +29,18 @@ app.use(cors({
   allowedHeaders: ["Content-Type","Authorization","Accept","X-Requested-With"]
 }));
 
-// ensure uploads dir exists
 const uploadsPath = path.join(__dirname, "..", "server_uploads");
 if (!fs.existsSync(uploadsPath)) fs.mkdirSync(uploadsPath, { recursive: true });
 app.use("/server_uploads", express.static(uploadsPath));
 
-// mount routes
 app.use("/api/leads", leadsRouter);
 app.use("/api/session", sessionRouter);
 app.use("/api/payment", paymentRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/demo", demoRouter);
+app.use("/api/debug", debugRouter);
 
-// Health endpoint for pingers & Render
 app.get("/health", (_req, res) => res.json({ ok: true, ts: Date.now() }));
-
 app.get("/", (_req, res) => res.json({ ok: true, message: "Server running." }));
 
 const PORT = Number(process.env.PORT || 10000);
@@ -53,9 +49,7 @@ async function start() {
     console.log("Initializing database...");
     await initDb();
     console.log("Database initialized.");
-    app.listen(PORT, () => {
-      console.log(`Server listening on port ${PORT}`);
-    });
+    app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
   } catch (e: any) {
     console.error("Startup Error:", e);
     process.exit(1);
