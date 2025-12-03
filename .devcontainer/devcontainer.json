@@ -1,18 +1,13 @@
 {
-  "name": "shopify-wa-automation-dev",
-  "build": {
-    "dockerfile": "Dockerfile"
-  },
+  "name": "shopify-wa-automation",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
   "customizations": {
     "vscode": {
       "extensions": [
-        "esbenp.prettier-vscode",
-        "dbaeumer.vscode-eslint"
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode"
       ]
     }
   },
-  "settings": {
-    "terminal.integrated.shell.linux": "/bin/bash"
-  },
-  "remoteUser": "vscode"
+  "postCreateCommand": "corepack enable && pnpm install -w"
 }
