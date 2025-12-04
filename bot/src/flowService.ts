@@ -1,7 +1,4 @@
-// bot/src/flowService.ts
-// FIXED FOR BAILEYS v5 – No WASocket namespace typing
-
-import { proto } from "@adiwajshing/baileys";
+// bot/src/flowService.ts (Baileys v6 safe version)
 
 export async function handleIncomingMessage(sock: any, upsert: any) {
   try {
@@ -9,29 +6,25 @@ export async function handleIncomingMessage(sock: any, upsert: any) {
     const messages = Array.isArray(msgs) ? msgs : [msgs];
 
     for (const msg of messages) {
-      if (!msg.message) continue;
+      const m = msg.message;
+      if (!m) continue;
 
       const from = msg.key.remoteJid;
-      const m = msg.message;
 
-      // Simple text handler
-      if (m.conversation || m.extendedTextMessage) {
-        const text = m.conversation || m.extendedTextMessage?.text || "";
-
-        await sock.sendMessage(from, {
-          text: `Received: ${text}`
-        });
+      // text messages
+      if (m.conversation) {
+        await sock.sendMessage(from, { text: "Received: " + m.conversation });
       }
 
-      // Image → OCR Logic (safe)
-      if (m.imageMessage && m.imageMessage.caption) {
+      // extended text
+      if (m.extendedTextMessage) {
         await sock.sendMessage(from, {
-          text: "Image received — OCR disabled in this version."
+          text: "Received: " + m.extendedTextMessage.text,
         });
       }
     }
   } catch (err) {
-    console.error("flowService error →", err);
+    console.error("FlowService error:", err);
   }
 }
 
