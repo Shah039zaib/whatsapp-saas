@@ -1,110 +1,156 @@
 // bot/src/index.ts
-import makeWASocket from "@adiwajshing/baileys";
+// Full, robust bot entry - Baileys v5 compatible.
+// Responsibilities:
+// - create Baileys socket with single-file auth
+// - on connection.update: handle qr, connection, upload session/qr to server
+// - graceful reconnection & session save
+// - pass incoming messages to flowService
+
+import makeWASocket, {
+  DisconnectReason,
+  useSingleFileAuthState,
+  fetchLatestBaileysVersion,
+  makeCacheableSignalKeyStore,
+  Browsers
+} from "@adiwajshing/baileys";
 import P from "pino";
 import path from "path";
 import axios from "axios";
 import dotenv from "dotenv";
 import fs from "fs";
 import { handleIncomingMessage } from "./flowService";
-import { runLocalOcr } from "./ocrLocal";
 
 dotenv.config();
 const log = P();
-const SESSION_DIR = process.env.SESSION_DIR || "./bot_sessions";
-const APP_BASE_URL = process.env.APP_BASE_URL || "";
-const ALLOW_REMOTE_SESSION = process.env.ALLOW_REMOTE_SESSION === "true";
-const SESSION_SECRET = process.env.SESSION_UPLOAD_SECRET || ""; // optional
 
-async function writeSessionFilesFromRemote(filesObj: Record<string, any>) {
-  await fs.promises.mkdir(SESSION_DIR, { recursive: true });
-  for (const [fname, content] of Object.entries(filesObj)) {
-    const p = path.join(SESSION_DIR, fname);
-    await fs.promises.writeFile(p, JSON.stringify(content, null, 2), "utf8");
+// Config from env
+const SESSION_DIR = process.env.SESSION_DIR || "./bot_sessions";
+const SESSION_FILE = process.env.SESSION_FILE || "auth_info.json";
+const APP_BASE_URL = (process.env.APP_BASE_URL || "").replace(/\/$/, "");
+const ALLOW_REMOTE_SESSION = (process.env.ALLOW_REMOTE_SESSION || "false") === "true";
+const SESSION_UPLOAD_SECRET = process.env.SESSION_UPLOAD_SECRET || "";
+
+if (!fs.existsSync(SESSION_DIR)) fs.mkdirSync(SESSION_DIR, { recursive: true });
+const authFilePath = path.join(SESSION_DIR, SESSION_FILE);
+
+// helper: upload QR to server so admin can read it
+async function uploadQr(qr: string) {
+  if (!APP_BASE_URL || !ALLOW_REMOTE_SESSION) return;
+  try {
+    const url = `${APP_BASE_URL}/api/bot/qr`;
+    await axios.post(url, { qr }, {
+      headers: SESSION_UPLOAD_SECRET ? { "x-session-secret": SESSION_UPLOAD_SECRET } : undefined,
+      timeout: 10000
+    });
+    log.info({ url }, "Uploaded QR to server");
+  } catch (e: any) {
+    log.warn({ err: e?.message || e }, "Failed to upload QR");
   }
 }
 
-async function fetchAndRestoreRemoteSession() {
-  if (!ALLOW_REMOTE_SESSION || !APP_BASE_URL) return false;
+// helper: upload full session/auth (so server/admin can persist)
+async function uploadAuth(auth: any) {
+  if (!APP_BASE_URL || !ALLOW_REMOTE_SESSION) return;
   try {
-    const url = `${APP_BASE_URL.replace(/\/$/, "")}/api/session`;
-    const headers: any = {};
-    if (SESSION_SECRET) headers["x-session-key"] = SESSION_SECRET;
-    const r = await axios.get(url, { timeout: 10_000, headers });
-    if (r.data?.ok && r.data.files && Object.keys(r.data.files).length) {
-      await writeSessionFilesFromRemote(r.data.files);
-      console.log("Remote session restored into", SESSION_DIR);
-      return true;
-    }
+    const url = `${APP_BASE_URL}/api/bot/session`;
+    await axios.post(url, { session: auth }, {
+      headers: SESSION_UPLOAD_SECRET ? { "x-session-secret": SESSION_UPLOAD_SECRET } : undefined,
+      timeout: 10000
+    });
+    log.info("Uploaded auth/session to server");
   } catch (e: any) {
-    console.warn("Could not fetch remote session:", e?.message || e);
+    log.warn({ err: e?.message || e }, "Failed to upload auth/session");
   }
-  return false;
 }
 
 async function startBot() {
-  // 1) Try to fetch session from server and write files (if allowed)
-  await fetchAndRestoreRemoteSession();
+  // useSingleFileAuthState stores auth state to disk
+  const { state, saveState } = useSingleFileAuthState(authFilePath);
 
-  // 2) Now call useMultiFileAuthState (Baileys reads SESSION_DIR if present)
-  const { useMultiFileAuthState } = await import("@adiwajshing/baileys");
-  const { state, saveCreds } = await (useMultiFileAuthState as any)(SESSION_DIR);
+  // get latest version of WA web
+  const { version, isLatest } = await fetchLatestBaileysVersion();
+  log.info({ version, isLatest }, "Using WA Web Version");
 
   const sock = makeWASocket({
+    logger: log,
+    printQRInTerminal: false,
     auth: state,
-    logger: log as any,
-  } as any);
+    version,
+    browser: Browsers.macOS("Safari"),
+  });
 
-  // When creds update, save to disk AND POST to server for persistence
-  sock.ev.on("creds.update", async () => {
+  // save state on changes
+  sock.ev.on("creds.update", saveState);
+
+  // listen for connection updates (qr, connection)
+  sock.ev.on("connection.update", async (update) => {
     try {
-      await saveCreds();
-      if (ALLOW_REMOTE_SESSION && APP_BASE_URL) {
-        const files: Record<string, any> = {};
-        const entries = await fs.promises.readdir(SESSION_DIR).catch(() => []);
-        for (const f of entries) {
-          const content = await fs.promises.readFile(path.join(SESSION_DIR, f), "utf8");
-          try { files[f] = JSON.parse(content); } catch { files[f] = content; }
+      const { connection, lastDisconnect, qr } = update as any;
+
+      if (qr) {
+        log.info("Got QR, uploading to server (if configured).");
+        await uploadQr(qr);
+        // also save locally for debugging
+        try { fs.writeFileSync(path.join(SESSION_DIR, "last_qr.txt"), qr); } catch(e){}
+      }
+
+      if (connection === "open") {
+        log.info("Connection open - session established.");
+        // upload auth/state for remote persistence
+        try {
+          // read auth file and upload
+          if (fs.existsSync(authFilePath)) {
+            const auth = JSON.parse(fs.readFileSync(authFilePath, "utf-8"));
+            await uploadAuth(auth);
+          }
+        } catch (e) {
+          log.warn({ err: (e as any).message || e }, "Uploading auth failed");
         }
-        const headers: any = {};
-        if (SESSION_SECRET) headers["x-session-key"] = SESSION_SECRET;
-        await axios.post(`${APP_BASE_URL.replace(/\/$/, "")}/api/session`, { files }, { timeout: 10_000, headers });
-        console.log("Remote session POSTed to server");
+      }
+
+      if (connection === "close") {
+        const code = (lastDisconnect && (lastDisconnect.error || lastDisconnect))?.output?.statusCode ||
+                     (lastDisconnect && lastDisconnect.error && lastDisconnect.error?.statusCode) ||
+                     undefined;
+        log.warn({ lastDisconnect, code }, "Connection closed");
+        // Attempt reconnect unless logged out
+        if (lastDisconnect && (lastDisconnect.error || lastDisconnect).output) {
+          const reason = (lastDisconnect.error || lastDisconnect).output?.statusCode;
+          if (reason !== DisconnectReason.loggedOut) {
+            log.info("Reconnecting after disconnect...");
+            setTimeout(() => startBot().catch(e => log.error(e)), 3000);
+          } else {
+            log.info("Logged out - removing session file so user can re-scan.");
+            try { fs.unlinkSync(authFilePath); } catch(e){}
+          }
+        } else {
+          // generic reconnect
+          setTimeout(() => startBot().catch(e => log.error(e)), 3000);
+        }
       }
     } catch (e) {
-      console.warn("Error saving/posting creds:", e);
+      log.error({ err: (e as any).message || e }, "Error in connection.update handler");
     }
   });
 
-  // messages handler
-  sock.ev.on("messages.upsert", async (m: any) => {
-    const messages = m.messages;
-    for (const msg of messages) {
-      if (!msg.message) continue;
-      const from = msg.key.remoteJid!;
-      const text = (msg.message?.conversation) || (msg.message?.extendedTextMessage?.text) || "";
-      await handleIncomingMessage(sock as any, from, text);
+  // message handling
+  sock.ev.on("messages.upsert", async (m) => {
+    try {
+      await handleIncomingMessage(sock, m);
+    } catch (e) {
+      log.warn({ err: (e as any).message || e }, "handleIncomingMessage error");
     }
   });
 
-  sock.ev.on("connection.update", async (update: any) => {
-    const { connection, lastDisconnect } = update;
-    if (connection === "open") {
-      console.log("WA connected");
-    } else if (connection === "close") {
-      const code = lastDisconnect?.error?.output?.statusCode;
-      console.log("Connection closed, reason:", code);
-      const { DisconnectReason } = await import("@adiwajshing/baileys");
-      if (code !== DisconnectReason?.loggedOut) {
-        console.log("Attempting reconnect...");
-        setTimeout(()=> startBot().catch(console.error), 3000);
-      } else {
-        console.log("Logged out - remove session and re-scan.");
-      }
-    }
+  // graceful shutdown
+  process.on("SIGINT", async () => {
+    log.info("SIGINT - closing socket");
+    try { await sock.logout(); } catch(e){}
+    process.exit(0);
   });
 }
 
 startBot().catch((e) => {
-  console.error("Bot start error:", e);
+  log.error({ err: (e as any).message || e }, "Bot start error");
   process.exit(1);
 });
