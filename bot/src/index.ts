@@ -1,13 +1,10 @@
-// bot/src/index.ts
-// Baileys v5, TypeScript-safe, Render-friendly.
-// Responsibilities:
-// - useSingleFileAuthState for single-file auth
-// - upload QR and session to your server endpoints
-// - reconnect / loggedOut handling
-// - messages.upsert -> delegated to flowService
-
-import makeWASocket from "@adiwajshing/baileys";
-import { useSingleFileAuthState, fetchLatestBaileysVersion, DisconnectReason } from "@adiwajshing/baileys";
+// Baileys v4 compatible bot
+// WORKING ON RENDER + QR + SESSION
+import makeWASocket, {
+    DisconnectReason,
+    fetchLatestBaileysVersion,
+    useSingleFileAuthState
+} from "@adiwajshing/baileys";
 import P from "pino";
 import fs from "fs";
 import path from "path";
@@ -19,116 +16,92 @@ dotenv.config();
 const log = P({ level: "info" });
 
 const SESSION_DIR = process.env.SESSION_DIR || "./bot_sessions";
-const SESSION_FILE = process.env.SESSION_FILE || "auth_info.json";
-const APP_BASE_URL = (process.env.APP_BASE_URL || "").replace(/\/$/, "");
-const SESSION_UPLOAD_SECRET = process.env.SESSION_UPLOAD_SECRET || "";
-const ALLOW_REMOTE_SESSION = (process.env.ALLOW_REMOTE_SESSION || "false") === "true";
+const SESSION_FILE = "auth_info.json";
 
 if (!fs.existsSync(SESSION_DIR)) fs.mkdirSync(SESSION_DIR, { recursive: true });
-const authPath = path.join(SESSION_DIR, SESSION_FILE);
 
-// Upload QR to server for admin UI
-async function uploadQr(qr: string) {
-  if (!APP_BASE_URL || !ALLOW_REMOTE_SESSION) return;
+const authPath = path.join(SESSION_DIR, SESSION_FILE);
+const { state, saveState } = useSingleFileAuthState(authPath);
+
+const APP_BASE_URL = (process.env.APP_BASE_URL || "").replace(/\/$/, "");
+const ALLOW_REMOTE_SESSION = process.env.ALLOW_REMOTE_SESSION === "true";
+const SESSION_UPLOAD_SECRET = process.env.SESSION_UPLOAD_SECRET || "";
+
+// Upload QR
+async function uploadQr(qr) {
+  if (!ALLOW_REMOTE_SESSION) return;
   try {
     await axios.post(`${APP_BASE_URL}/api/bot/qr`, { qr }, {
-      headers: SESSION_UPLOAD_SECRET ? { "x-session-secret": SESSION_UPLOAD_SECRET } : undefined,
-      timeout: 10000
+      headers: SESSION_UPLOAD_SECRET ? { "x-session-secret": SESSION_UPLOAD_SECRET } : {}
     });
-    log.info("Uploaded QR to server");
-  } catch (e: any) {
-    log.warn("uploadQr failed:", e?.message || e);
+  } catch (e) {
+    console.log("QR upload failed:", e.message);
   }
 }
 
-// Upload session (single file) to server so admin can persist or show session status
+// Upload session
 async function uploadSession() {
-  if (!APP_BASE_URL || !ALLOW_REMOTE_SESSION) return;
   try {
     if (!fs.existsSync(authPath)) return;
-    const sessionContent = fs.readFileSync(authPath, "utf-8");
-    await axios.post(`${APP_BASE_URL}/api/bot/session`, { session: sessionContent }, {
-      headers: SESSION_UPLOAD_SECRET ? { "x-session-secret": SESSION_UPLOAD_SECRET } : undefined,
-      timeout: 15000
+    const data = fs.readFileSync(authPath, "utf8");
+    await axios.post(`${APP_BASE_URL}/api/bot/session`, { session: data }, {
+      headers: SESSION_UPLOAD_SECRET ? { "x-session-secret": SESSION_UPLOAD_SECRET } : {}
     });
-    log.info("Uploaded session to server");
-  } catch (e: any) {
-    log.warn("uploadSession failed:", e?.message || e);
+  } catch (e) {
+    console.log("Session upload failed:", e.message);
   }
 }
 
 async function startBot() {
-  // use single-file auth state (v5)
-  const { state, saveState } = useSingleFileAuthState(authPath);
-
-  // try to fetch latest WA version (safe)
-  const { version } = await fetchLatestBaileysVersion().catch(() => ({ version: [2, 2140, 12] }));
-
+  const { version } = await fetchLatestBaileysVersion();
   const sock = makeWASocket({
-    auth: state,
-    version,
     logger: log,
     printQRInTerminal: false,
+    auth: state,
+    version,
   });
 
-  // persist creds
   sock.ev.on("creds.update", saveState);
 
-  // connection updates: qr, open, close
-  sock.ev.on("connection.update", async (update: any) => {
-    try {
-      const qr = update.qr;
-      const connection = update.connection;
-      const lastDisconnect = update.lastDisconnect;
+  sock.ev.on("connection.update", async (update) => {
+    const { connection, lastDisconnect, qr } = update;
 
-      if (qr) {
-        log.info("Got QR — saving and uploading");
-        try { fs.writeFileSync(path.join(SESSION_DIR, "last_qr.txt"), qr); } catch {}
-        await uploadQr(qr);
-      }
+    if (qr) {
+      fs.writeFileSync(path.join(SESSION_DIR, "qr.txt"), qr);
+      await uploadQr(qr);
+    }
 
-      if (connection === "open") {
-        log.info("Bot connected (open)");
-        await uploadSession();
-      }
+    if (connection === "open") {
+      console.log("Bot connected!");
+      await uploadSession();
+    }
 
-      if (connection === "close") {
-        const code = lastDisconnect?.error?.output?.statusCode || lastDisconnect?.error?.output || 0;
-        log.warn("Connection closed", { code });
-        if (code !== DisconnectReason.loggedOut) {
-          log.info("Attempting reconnect...");
-          setTimeout(() => startBot().catch(err => log.error("reconnect failed", err)), 3000);
-        } else {
-          log.info("Logged out — removing auth file so user can re-scan.");
-          try { fs.unlinkSync(authPath); } catch(e){}
-          setTimeout(() => startBot().catch(err => log.error("restart after logout failed", err)), 3000);
-        }
+    if (connection === "close") {
+      const shouldReconnect =
+        lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+
+      if (shouldReconnect) {
+        console.log("Reconnecting...");
+        setTimeout(startBot, 2000);
+      } else {
+        console.log("Logged out. Clearing session.");
+        fs.unlinkSync(authPath);
+        setTimeout(startBot, 2000);
       }
-    } catch (e) {
-      log.error("connection.update handler error", e);
     }
   });
 
-  // messages handler
-  sock.ev.on("messages.upsert", async (m: any) => {
+  sock.ev.on("messages.upsert", async (m) => {
     try {
       await handleIncomingMessage(sock, m);
     } catch (e) {
-      log.warn("messages.upsert handler error", e);
+      console.log("Message error:", e.message);
     }
-  });
-
-  // graceful exit
-  process.on("SIGINT", async () => {
-    log.info("SIGINT received — exiting");
-    try { await sock.logout(); } catch(e){}
-    process.exit(0);
   });
 }
 
 startBot().catch((e) => {
-  console.error("🔴 BOT FAILED TO START — FULL ERROR BELOW:");
-  console.error(e?.message || e);
-  console.error("STACK:", e?.stack);
+  console.error("Bot start error:", e.message);
+  console.error("STACK:", e.stack);
   process.exit(1);
 });
