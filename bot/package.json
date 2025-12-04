@@ -6,7 +6,7 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "@adiwajshing/baileys": "^6.0.0",
+    "@adiwajshing/baileys": "^5.0.0",
     "pino": "^8.13.0",
     "axios": "^1.4.0",
     "dotenv": "^16.3.1",
